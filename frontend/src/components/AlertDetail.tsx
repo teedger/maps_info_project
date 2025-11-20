@@ -14,7 +14,7 @@ interface AlertDetailProps {
 const API_URL = 'http://localhost:3001/api';
 
 function AlertDetail({ alertId, categories, token, userId, onClose, onUpvote, onDelete }: AlertDetailProps) {
-  const [alert, setAlert] = useState<Alert | null>(null);
+  const [alertData, setAlertData] = useState<Alert | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [guestName, setGuestName] = useState('');
@@ -24,7 +24,7 @@ function AlertDetail({ alertId, categories, token, userId, onClose, onUpvote, on
     fetch(`${API_URL}/alerts/${alertId}`)
       .then(res => res.json())
       .then(data => {
-        setAlert(data);
+        setAlertData(data);
         setComments(data.comments || []);
         setLoading(false);
       })
@@ -96,7 +96,7 @@ function AlertDetail({ alertId, categories, token, userId, onClose, onUpvote, on
     );
   }
 
-  if (!alert) {
+  if (!alertData) {
     return (
       <div className="modal-overlay">
         <div className="modal">
@@ -107,8 +107,8 @@ function AlertDetail({ alertId, categories, token, userId, onClose, onUpvote, on
     );
   }
 
-  const catInfo = getCategoryInfo(alert.category);
-  const isOwner = userId && alert.user_id === userId;
+  const catInfo = getCategoryInfo(alertData.category);
+  const isOwner = userId && alertData.user_id === userId;
 
   return (
     <div className="modal-overlay">
@@ -119,29 +119,29 @@ function AlertDetail({ alertId, categories, token, userId, onClose, onUpvote, on
         </div>
 
         <div className="alert-detail-content">
-          {alert.photo_url && (
+          {alertData.photo_url && (
             <div className="alert-photo">
-              <img src={`http://localhost:3001${alert.photo_url}`} alt="Alert" />
+              <img src={`http://localhost:3001${alertData.photo_url}`} alt="Alert" />
             </div>
           )}
 
-          <p className="description">{alert.description || 'No description provided'}</p>
+          <p className="description">{alertData.description || 'No description provided'}</p>
 
           <div className="alert-meta">
-            <span className={`severity ${alert.severity}`}>{alert.severity}</span>
-            <span className="author">By: {alert.author || 'Anonymous'}</span>
-            <span className="date">{new Date(alert.created_at).toLocaleDateString()}</span>
-            {alert.distance !== undefined && (
-              <span className="distance">{alert.distance} km away</span>
+            <span className={`severity ${alertData.severity}`}>{alertData.severity}</span>
+            <span className="author">By: {alertData.author || 'Anonymous'}</span>
+            <span className="date">{new Date(alertData.created_at).toLocaleDateString()}</span>
+            {alertData.distance !== undefined && (
+              <span className="distance">{alertData.distance} km away</span>
             )}
           </div>
 
           <div className="alert-actions">
             <button
-              onClick={() => onUpvote(alert.id)}
+              onClick={() => onUpvote(alertData.id)}
               className="upvote-btn-large"
             >
-              Confirm ({alert.upvotes})
+              Confirm ({alertData.upvotes})
             </button>
             {isOwner && (
               <button onClick={handleDelete} className="delete-btn-large">
