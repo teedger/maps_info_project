@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Alert, Category, NewAlert } from './types';
+import { Alert, Category, NewAlert, User } from './types';
 import AlertForm from './components/AlertForm';
+import AuthModal from './components/AuthModal';
+import AlertDetail from './components/AlertDetail';
 import './App.css';
 
 const API_URL = 'http://localhost:3001/api';
@@ -26,13 +28,58 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
   return null;
 }
 
+function LocationButton({ onLocate }: { onLocate: (lat: number, lng: number) => void }) {
+  const map = useMap();
+
+  const handleClick = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          map.setView([latitude, longitude], 15);
+          onLocate(latitude, longitude);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          alert('Could not get your location. Please enable location services.');
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
+
+  return (
+    <button className="locate-btn" onClick={handleClick} title="Go to my location">
+      📍
+    </button>
+  );
+}
+
 function App() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedPosition, setSelectedPosition] = useState<[number, number] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+
+  // Auth state
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Load saved auth on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
 
   // Fetch initial data
   useEffect(() => {
@@ -50,6 +97,21 @@ function App() {
     });
   }, []);
 
+  const handleLogin = (newToken: string, newUser: User) => {
+    setToken(newToken);
+    setUser(newUser);
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(newUser));
+    setShowAuth(false);
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  };
+
   const handleMapClick = (lat: number, lng: number) => {
     setSelectedPosition([lat, lng]);
     setShowForm(true);
@@ -57,9 +119,14 @@ function App() {
 
   const handleAddAlert = async (alertData: NewAlert) => {
     try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(`${API_URL}/alerts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(alertData),
       });
       const newAlert = await response.json();
@@ -77,7 +144,7 @@ function App() {
         method: 'POST',
       });
       const updatedAlert = await response.json();
-      setAlerts(alerts.map(a => a.id === id ? updatedAlert : a));
+      setAlerts(alerts.map(a => a.id === id ? { ...a, upvotes: updatedAlert.upvotes } : a));
     } catch (error) {
       console.error('Failed to upvote:', error);
     }
@@ -104,8 +171,20 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Community Maps</h1>
-        <p>Click on the map to report an alert</p>
+        <div className="header-left">
+          <h1>Community Maps</h1>
+          <p className="subtitle">Click on the map to report an alert</p>
+        </div>
+        <div className="header-right">
+          {user ? (
+            <div className="user-info">
+              <span>Hi, {user.username}</span>
+              <button onClick={handleLogout} className="auth-btn">Logout</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowAuth(true)} className="auth-btn">Login</button>
+          )}
+        </div>
       </header>
 
       <div className="filters">
@@ -116,7 +195,8 @@ function App() {
             onClick={() => toggleFilter(cat.id)}
             style={{ borderColor: cat.color }}
           >
-            {cat.icon} {cat.name}
+            <span className="filter-icon">{cat.icon}</span>
+            <span className="filter-name">{cat.name}</span>
           </button>
         ))}
       </div>
@@ -132,6 +212,19 @@ function App() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapClickHandler onMapClick={handleMapClick} />
+          <LocationButton onLocate={(lat, lng) => setUserLocation([lat, lng])} />
+
+          {userLocation && (
+            <Marker
+              position={userLocation}
+              icon={L.divIcon({
+                html: '<div style="background: #4285f4; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                className: 'user-location-marker',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
+              })}
+            />
+          )}
 
           {filteredAlerts.map(alert => {
             const catInfo = getCategoryInfo(alert.category);
@@ -140,12 +233,16 @@ function App() {
                 key={alert.id}
                 position={[alert.latitude, alert.longitude]}
                 icon={createIcon(catInfo.icon, catInfo.color)}
+                eventHandlers={{
+                  click: () => setSelectedAlertId(alert.id),
+                }}
               >
                 <Popup>
                   <div className="popup-content">
                     <h3>{catInfo.icon} {catInfo.name}</h3>
                     <p>{alert.description || 'No description'}</p>
                     <p className="severity">Severity: <span className={alert.severity}>{alert.severity}</span></p>
+                    <p className="author">By: {alert.author || 'Anonymous'}</p>
                     <p className="meta">
                       {new Date(alert.created_at).toLocaleDateString()}
                       {' • '}
@@ -153,6 +250,12 @@ function App() {
                         👍 {alert.upvotes}
                       </button>
                     </p>
+                    <button
+                      onClick={() => setSelectedAlertId(alert.id)}
+                      className="view-details-btn"
+                    >
+                      View Details & Comments
+                    </button>
                   </div>
                 </Popup>
               </Marker>
@@ -174,6 +277,23 @@ function App() {
             setShowForm(false);
             setSelectedPosition(null);
           }}
+        />
+      )}
+
+      {showAuth && (
+        <AuthModal
+          onLogin={handleLogin}
+          onClose={() => setShowAuth(false)}
+        />
+      )}
+
+      {selectedAlertId && (
+        <AlertDetail
+          alertId={selectedAlertId}
+          categories={categories}
+          token={token}
+          onClose={() => setSelectedAlertId(null)}
+          onUpvote={handleUpvote}
         />
       )}
     </div>
