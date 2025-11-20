@@ -5,13 +5,15 @@ interface AlertDetailProps {
   alertId: string;
   categories: Category[];
   token: string | null;
+  userId: string | null;
   onClose: () => void;
   onUpvote: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 const API_URL = 'http://localhost:3001/api';
 
-function AlertDetail({ alertId, categories, token, onClose, onUpvote }: AlertDetailProps) {
+function AlertDetail({ alertId, categories, token, userId, onClose, onUpvote, onDelete }: AlertDetailProps) {
   const [alert, setAlert] = useState<Alert | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -59,6 +61,29 @@ function AlertDetail({ alertId, categories, token, onClose, onUpvote }: AlertDet
     }
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this alert?')) return;
+
+    try {
+      const response = await fetch(`${API_URL}/alerts/${alertId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        onDelete(alertId);
+        onClose();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to delete alert');
+      }
+    } catch (error) {
+      console.error('Failed to delete:', error);
+    }
+  };
+
   const getCategoryInfo = (categoryId: string) => {
     return categories.find(c => c.id === categoryId) || { icon: '📍', color: '#9b59b6', name: 'Unknown' };
   };
@@ -83,6 +108,7 @@ function AlertDetail({ alertId, categories, token, onClose, onUpvote }: AlertDet
   }
 
   const catInfo = getCategoryInfo(alert.category);
+  const isOwner = userId && alert.user_id === userId;
 
   return (
     <div className="modal-overlay">
@@ -93,20 +119,36 @@ function AlertDetail({ alertId, categories, token, onClose, onUpvote }: AlertDet
         </div>
 
         <div className="alert-detail-content">
+          {alert.photo_url && (
+            <div className="alert-photo">
+              <img src={`http://localhost:3001${alert.photo_url}`} alt="Alert" />
+            </div>
+          )}
+
           <p className="description">{alert.description || 'No description provided'}</p>
 
           <div className="alert-meta">
             <span className={`severity ${alert.severity}`}>{alert.severity}</span>
             <span className="author">By: {alert.author || 'Anonymous'}</span>
             <span className="date">{new Date(alert.created_at).toLocaleDateString()}</span>
+            {alert.distance !== undefined && (
+              <span className="distance">{alert.distance} km away</span>
+            )}
           </div>
 
-          <button
-            onClick={() => onUpvote(alert.id)}
-            className="upvote-btn-large"
-          >
-            👍 Confirm ({alert.upvotes})
-          </button>
+          <div className="alert-actions">
+            <button
+              onClick={() => onUpvote(alert.id)}
+              className="upvote-btn-large"
+            >
+              Confirm ({alert.upvotes})
+            </button>
+            {isOwner && (
+              <button onClick={handleDelete} className="delete-btn-large">
+                Delete
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="comments-section">

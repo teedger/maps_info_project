@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Category, NewAlert } from '../types';
 
 interface AlertFormProps {
@@ -12,6 +12,35 @@ function AlertForm({ position, categories, onSubmit, onCancel }: AlertFormProps)
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState('medium');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Photo must be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setPhoto(result);
+        setPhotoPreview(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePhoto = () => {
+    setPhoto(null);
+    setPhotoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +52,7 @@ function AlertForm({ position, categories, onSubmit, onCancel }: AlertFormProps)
       category,
       description,
       severity,
+      photo: photo || undefined,
     });
   };
 
@@ -68,6 +98,25 @@ function AlertForm({ position, categories, onSubmit, onCancel }: AlertFormProps)
               <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
+          </div>
+
+          <div className="form-group">
+            <label>Photo (optional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              ref={fileInputRef}
+              className="file-input"
+            />
+            {photoPreview && (
+              <div className="photo-preview">
+                <img src={photoPreview} alt="Preview" />
+                <button type="button" onClick={removePhoto} className="remove-photo">
+                  Remove
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="form-actions">
